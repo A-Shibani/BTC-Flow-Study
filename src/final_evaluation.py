@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -5,11 +6,16 @@ import pandas as pd
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-TRADES_PATH = (
-    PROJECT_DIR
-    / "reports"
-    / "backtest_trades_2026-09-01_to_2026-09-30.csv"
-)
+DEFAULT_START_DATE = "2026-09-01"
+DEFAULT_END_DATE = "2026-09-30"
+
+
+def trades_path_for(start_date, end_date):
+    return (
+        PROJECT_DIR
+        / "reports"
+        / f"backtest_trades_{start_date}_to_{end_date}.csv"
+    )
 
 BOOTSTRAP_REPS = 20_000
 BLOCK_LENGTHS = (1, 3, 5)
@@ -49,13 +55,42 @@ def block_bootstrap_ci(values, block_length, rng):
 
 
 def main():
-    if not TRADES_PATH.exists():
+    parser = argparse.ArgumentParser(
+        description="Summarise backtest trades and bootstrap daily means."
+    )
+    parser.add_argument(
+        "--start-date",
+        default=DEFAULT_START_DATE,
+        help="First date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=DEFAULT_END_DATE,
+        help="Last date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    args = parser.parse_args()
+
+    try:
+        start_date = pd.Timestamp(args.start_date).date().isoformat()
+        end_date = pd.Timestamp(args.end_date).date().isoformat()
+    except (TypeError, ValueError):
+        parser.error("Dates must be valid dates in YYYY-MM-DD format")
+
+    if start_date != args.start_date or end_date != args.end_date:
+        parser.error("Dates must use YYYY-MM-DD format")
+
+    if end_date < start_date:
+        parser.error("--end-date must be on or after --start-date")
+
+    trades_path = trades_path_for(start_date, end_date)
+
+    if not trades_path.exists():
         raise FileNotFoundError(
-            f"Trade file not found: {TRADES_PATH}\n"
-            "Run src/backtest.py for the configured period before evaluation."
+            f"Trade file not found: {trades_path}\\n"
+            "Run src/backtest.py for the same date range first."
         )
 
-    trades = pd.read_csv(TRADES_PATH)
+    trades = pd.read_csv(trades_path)
 
     required = {"date", "side", "gross_return_bps"}
     missing = required - set(trades.columns)
@@ -83,7 +118,7 @@ def main():
     ).mean()
 
     print("=" * 72)
-    print("FINAL EVALUATION — SEPTEMBER 2026")
+    print(f"FINAL EVALUATION — {start_date} to {end_date}")
     print("=" * 72)
     print(f"Trades: {len(trades):,}")
     print(f"Days: {len(daily)}")

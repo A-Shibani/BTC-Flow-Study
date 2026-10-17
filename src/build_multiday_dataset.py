@@ -1,3 +1,4 @@
+import argparse
 from datetime import date, timedelta
 from pathlib import Path
 from zipfile import ZipFile
@@ -33,12 +34,63 @@ COLUMNS = [
 ]
 
 
-def dates_in_range():
+def dates_in_range(start_date: date, end_date: date):
     """Return every calendar date, including both endpoints."""
-    current = START_DATE
-    while current <= END_DATE:
+    current = start_date
+    while current <= end_date:
         yield current
         current += timedelta(days=1)
+
+
+def signed_trade_quantity(
+    quantity: pd.Series,
+    buyer_is_maker: pd.Series,
+) -> pd.Series:
+    """Return positive quantity for aggressive buys, negative for sells."""
+    quantity = pd.Series(quantity)
+    maker_flag = (
+        pd.Series(buyer_is_maker, index=quantity.index)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map({"true": True, "false": False})
+    )
+
+    if maker_flag.isna().any():
+        raise ValueError("Could not interpret buyer_is_maker values.")
+
+    signed = np.where(
+        maker_flag.to_numpy(dtype=bool),
+        -quantity.to_numpy(dtype=float),
+        quantity.to_numpy(dtype=float),
+    )
+    return pd.Series(signed, index=quantity.index, name="signed_qty_btc")
+
+
+def normalize_flow_imbalance(
+    signed_quantity: pd.Series,
+    total_quantity: pd.Series,
+) -> pd.Series:
+    """Normalize signed volume; return NaN where total volume is zero."""
+    denominator = total_quantity.replace(0, np.nan)
+    return signed_quantity / denominator
+
+
+def forward_fill_known_price(price: pd.Series) -> pd.Series:
+    """Carry the last known traded price forward; do not backfill."""
+    return price.ffill()
+
+
+def calculate_forward_return_bps(
+    known_price: pd.Series,
+    horizon: int,
+) -> pd.Series:
+    """Calculate a forward return using prices horizon rows in the future."""
+    if not isinstance(horizon, int) or horizon < 1:
+        raise ValueError("horizon must be a positive integer")
+
+    future_price = known_price.shift(-horizon)
+    return (future_price / known_price - 1) * 10_000
 
 
 def build_one_day(day: date) -> pd.DataFrame:
@@ -101,25 +153,10 @@ def build_one_day(day: date) -> pd.DataFrame:
             f"Timestamps in {filename} do not all match {day} UTC."
         )
 
-    # True means the buyer was the passive maker, so the seller
-    # initiated the trade. Aggressive buying therefore has positive sign.
-    maker_flag = (
-        trades["buyer_is_maker"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .map({"true": True, "false": False})
-    )
-
-    if maker_flag.isna().any():
-        raise ValueError(
-            f"Could not interpret buyer_is_maker in {filename}."
-        )
-
-    trades["signed_qty_btc"] = np.where(
-        maker_flag,
-        -trades["quantity"],
+    # Aggressive buying is positive; aggressive selling is negative.
+    trades["signed_qty_btc"] = signed_trade_quantity(
         trades["quantity"],
+        trades["buyer_is_maker"],
     )
 
     trades = trades.set_index("timestamp").sort_index()
@@ -147,8 +184,10 @@ def build_one_day(day: date) -> pd.DataFrame:
     bars["signed_qty_btc"] = bars["signed_qty_btc"].fillna(0.0)
     bars["trade_count"] = bars["trade_count"].fillna(0).astype("int64")
 
-    denominator = bars["total_qty_btc"].replace(0, np.nan)
-    bars["flow_imbalance"] = bars["signed_qty_btc"] / denominator
+    bars["flow_imbalance"] = normalize_flow_imbalance(
+        bars["signed_qty_btc"],
+        bars["total_qty_btc"],
+    )
 
     print(
         f"{day}: {len(trades):,} raw trades; "
@@ -159,19 +198,42 @@ def build_one_day(day: date) -> pd.DataFrame:
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Build BTCUSDT one-second bars and forward-return targets."
+    )
+    parser.add_argument(
+        "--start-date",
+        type=date.fromisoformat,
+        default=START_DATE,
+        help="First UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=date.fromisoformat,
+        default=END_DATE,
+        help="Last UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    args = parser.parse_args()
+
+    if args.end_date < args.start_date:
+        parser.error("--end-date must be on or after --start-date")
+
+    start_date = args.start_date
+    end_date = args.end_date
+
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     daily_bars = [
         build_one_day(day)
-        for day in dates_in_range()
+        for day in dates_in_range(start_date, end_date)
     ]
 
     # Combine all requested daily dataframes chronologically.
     bars = pd.concat(daily_bars).sort_index()
 
     expected_index = pd.date_range(
-        start=pd.Timestamp(START_DATE.isoformat(), tz="UTC"),
-        periods=(END_DATE - START_DATE).days * SECONDS_PER_DAY
+        start=pd.Timestamp(start_date.isoformat(), tz="UTC"),
+        periods=(end_date - start_date).days * SECONDS_PER_DAY
         + SECONDS_PER_DAY,
         freq="s",
     )
@@ -186,7 +248,7 @@ def main():
 
     bars_path = (
         PROCESSED_DIR
-        / f"{SYMBOL}-1s-{START_DATE}_to_{END_DATE}.csv"
+        / f"{SYMBOL}-1s-{start_date}_to_{end_date}.csv"
     )
     bars.to_csv(bars_path, index_label="bar_start_utc")
 
@@ -196,19 +258,18 @@ def main():
     dataset.index = dataset.index + pd.Timedelta(seconds=1)
     dataset.index.name = "feature_available_at_utc"
 
-    # Carry the last traded price across seconds with no trades.
-    # Keep the original close_price column unchanged for data inspection.
-    known_price = dataset["close_price"].ffill()
+    # Features are aligned to their availability time. Forward-fill only
+    # past-known prices, then use future prices to construct each target.
+    known_price = forward_fill_known_price(dataset["close_price"])
 
     for horizon in HORIZONS:
-        future_price = known_price.shift(-horizon)
         dataset[f"future_return_{horizon}s_bps"] = (
-            future_price / known_price - 1
-        ) * 10_000
+            calculate_forward_return_bps(known_price, horizon)
+        )
 
     targets_path = (
         PROCESSED_DIR
-        / f"{SYMBOL}-targets-{START_DATE}_to_{END_DATE}.csv"
+        / f"{SYMBOL}-targets-{start_date}_to_{end_date}.csv"
     )
     dataset.to_csv(targets_path, index_label="feature_available_at_utc")
 
@@ -250,7 +311,7 @@ def main():
     print("\nDAILY PEARSON CORRELATIONS")
     print("date       | 1-second | 5-second | 30-second")
 
-    for day in dates_in_range():
+    for day in dates_in_range(start_date, end_date):
         mask = original_bar_date == day
         results = []
 

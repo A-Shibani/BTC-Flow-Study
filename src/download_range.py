@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from io import BytesIO
 from pathlib import Path
 import zipfile
+import argparse
 
 import requests
 
@@ -28,10 +29,10 @@ def is_valid_archive(path: Path) -> bool:
         return False
 
 
-def dates_in_range():
-    """Yield every date, including both endpoints."""
-    current = START_DATE
-    while current <= END_DATE:
+def dates_in_range(start_date: date, end_date: date):
+    """Yield every date in the requested range, including both endpoints."""
+    current = start_date
+    while current <= end_date:
         yield current
         current += timedelta(days=1)
 
@@ -84,12 +85,30 @@ def download_day(day: date) -> bool:
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Download Binance BTCUSDT spot aggregate-trade archives."
+    )
+    parser.add_argument(
+        "--start-date",
+        type=date.fromisoformat,
+        default=START_DATE,
+        help="First UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=date.fromisoformat,
+        default=END_DATE,
+        help="Last UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    args = parser.parse_args()
+
+    if args.end_date < args.start_date:
+        parser.error("--end-date must be on or after --start-date")
+
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-    results = [
-        (day, download_day(day))
-        for day in dates_in_range()
-    ]
+    dates = list(dates_in_range(args.start_date, args.end_date))
+    results = [(day, download_day(day)) for day in dates]
 
     successful = sum(ok for _, ok in results)
     failed_dates = [
@@ -98,7 +117,7 @@ def main():
         if not ok
     ]
 
-    print(f"\nCompleted: {successful}/{len(results)} days")
+    print(f"\\nCompleted: {successful}/{len(results)} days")
 
     if failed_dates:
         print("Failed dates:", ", ".join(failed_dates))

@@ -1,3 +1,5 @@
+import argparse
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -32,12 +34,14 @@ DATA_PATH = (
 OUTPUT_DIR = PROJECT_DIR / "reports"
 
 
-def load_data():
-    if not DATA_PATH.exists():
-        raise FileNotFoundError(f"Dataset not found: {DATA_PATH}")
+def load_data(data_path=None):
+    if data_path is None:
+        data_path = DATA_PATH
+    if not data_path.exists():
+        raise FileNotFoundError(f"Dataset not found: {data_path}")
 
     df = pd.read_csv(
-        DATA_PATH,
+        data_path,
         parse_dates=["feature_available_at_utc"],
     ).set_index("feature_available_at_utc")
 
@@ -124,39 +128,12 @@ def build_trades(df):
 
     return sampled, trades, dropped
 
-
-def compounded_return(return_bps):
-    factors = 1 + np.asarray(return_bps, dtype=float) / 10_000
-
-    if len(factors) == 0:
-        return 0.0
-
-    if np.any(factors <= 0):
-        return -1.0
-
-    return float(np.prod(factors) - 1)
-
-
-def max_drawdown(return_bps):
-    factors = 1 + np.asarray(return_bps, dtype=float) / 10_000
-
-    if len(factors) == 0:
-        return 0.0
-
-    equity = np.cumprod(factors)
-    equity_with_initial = np.concatenate(([1.0], equity))
-    peaks = np.maximum.accumulate(equity_with_initial)
-    drawdowns = equity_with_initial / peaks - 1
-
-    return float(drawdowns.min())
-
-
-def print_summary(trades):
+def print_summary(trades, start_date=START_DATE, end_date=END_DATE):
     print("\n" + "=" * 76)
     print("BACKTEST SUMMARY")
     print("=" * 76)
 
-    print(f"Data period: {START_DATE} to {END_DATE}")
+    print(f"Data period: {start_date} to {end_date}")
     print(f"Long threshold:  >= {LONG_THRESHOLD}")
     print(f"Short threshold: <= {SHORT_THRESHOLD}")
     print(f"Signal interval: {SIGNAL_INTERVAL_SECONDS} seconds")
@@ -182,25 +159,20 @@ def print_summary(trades):
         f"{gross.mean():.5f} bps per trade"
     )
 
-    print("\nCOST SENSITIVITY")
+    print("\nCOST SENSITIVITY - PER-TRADE METRICS")
     print(
-        "Cost bps | Mean net bps | Net win rate | "
-        "Compounded return | Max drawdown"
+        "Round-trip cost (bps) | Mean net return (bps/trade) | "
+        "Net win rate"
     )
 
     for cost in COST_SCENARIOS_BPS:
         net = gross - cost
-
-        total_return = compounded_return(net)
-        drawdown = max_drawdown(net)
         win_rate = (net > 0).mean()
 
         print(
-            f"{cost:>8.2f} | "
-            f"{net.mean():>12.5f} | "
-            f"{win_rate:>12.2%} | "
-            f"{total_return:>16.2%} | "
-            f"{drawdown:>12.2%}"
+            f"{cost:>22.2f} | "
+            f"{net.mean():>27.5f} | "
+            f"{win_rate:>12.2%}"
         )
 
 
@@ -219,27 +191,47 @@ def build_daily_report(trades):
         ),
     )
 
-    for cost in [0, 2, 5, 10, 20]:
-        daily_net = trades["gross_return_bps"] - cost
-
-        daily_return = (
-            (1 + daily_net / 10_000)
-            .groupby(trades["date"])
-            .prod()
-            - 1
+    for cost in COST_SCENARIOS_BPS:
+        daily[f"mean_net_bps_cost_{cost:g}"] = (
+            daily["mean_gross_bps"] - cost
         )
-
-        daily[f"net_return_cost_{cost}bps_pct"] = (
-            daily_return * 100
-        )
-
     return daily
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Run the frozen BTCUSDT OFI threshold backtest."
+    )
+    parser.add_argument(
+        "--start-date",
+        type=date.fromisoformat,
+        default=date.fromisoformat(START_DATE),
+        help="First UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--end-date",
+        type=date.fromisoformat,
+        default=date.fromisoformat(END_DATE),
+        help="Last UTC date in YYYY-MM-DD format (default: %(default)s)",
+    )
+    args = parser.parse_args()
+
+    if args.end_date < args.start_date:
+        parser.error("--end-date must be on or after --start-date")
+
+    start_date = args.start_date.isoformat()
+    end_date = args.end_date.isoformat()
+
+    data_path = (
+        PROJECT_DIR
+        / "data"
+        / "processed"
+        / f"BTCUSDT-targets-{start_date}_to_{end_date}.csv"
+    )
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    df = load_data()
+    df = load_data(data_path)
     sampled, trades, dropped = build_trades(df)
 
     print(f"One-second rows loaded: {len(df):,}")
@@ -250,16 +242,16 @@ def main():
     )
     print(f"Signals dropped due to unavailable prices: {dropped:,}")
 
-    print_summary(trades)
+    print_summary(trades, start_date, end_date)
 
     trades_path = OUTPUT_DIR / (
-    f"backtest_trades_{START_DATE}_to_{END_DATE}.csv"
+    f"backtest_trades_{start_date}_to_{end_date}.csv"
     )
     trades.to_csv(trades_path, index_label="signal_time_utc")
 
     daily = build_daily_report(trades)
     daily_path = OUTPUT_DIR / (
-    f"backtest_daily_{START_DATE}_to_{END_DATE}.csv"
+    f"backtest_daily_{start_date}_to_{end_date}.csv"
     )
     daily.to_csv(daily_path, index_label="date")
 
