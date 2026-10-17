@@ -11,8 +11,8 @@ import pandas as pd
 # --------------------------------------------------
 
 SYMBOL = "BTCUSDT"
-START_DATE = date(2025, 7, 1)
-END_DATE = date(2025, 7, 31)
+START_DATE = date(2026, 9, 1)
+END_DATE = date(2026, 9, 30)
 
 SECONDS_PER_DAY = 86_400
 HORIZONS = (1, 5, 30)
@@ -166,7 +166,7 @@ def main():
         for day in dates_in_range()
     ]
 
-    # Combine the seven daily dataframes chronologically.
+    # Combine all requested daily dataframes chronologically.
     bars = pd.concat(daily_bars).sort_index()
 
     expected_index = pd.date_range(

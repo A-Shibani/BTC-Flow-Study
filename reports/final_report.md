@@ -177,4 +177,115 @@ The project scripts used during the study include the following (some are explor
 - `src/backtest.py` — implements the fixed threshold rule and cost sensitivity.
 - `src/final_evaluation.py` — summarises July trade results and bootstraps daily means.
 
-The scripts use date constants near the top of the file. To reproduce the reported analysis, use the archived CSV outputs and the same date configuration recorded in this report. Avoid overwriting the July evaluation files with other date ranges; save each period's outputs under distinct names.
+The scripts use date constants near the top of the file. To reproduce the reported analysis, use the archived CSV outputs and the same date configuration recorded in this report. Keep each evaluation period's trade and daily outputs under distinct filenames. The scripts' date constants determine the active range.
+
+## September 2026 Historical Holdout
+
+The frozen baseline (`v1.0-frozen-ofi`) was evaluated from
+2026-09-01 through 2026-09-30. The signal thresholds and timing
+parameters were unchanged. This is a retrospective historical holdout,
+not a live forward test.
+
+### Strategy specification
+
+- Long when flow imbalance >= 0.75.
+- Short when flow imbalance <= -0.75.
+- Decision grid: every five seconds.
+- Entry price proxy: t+1 second.
+- Exit price proxy: t+6 seconds.
+- Holding period: five seconds after entry.
+- No minimum-trade-count filter.
+
+### Results
+
+- One-second observations: 2,592,000.
+- Executed trades: 348,931.
+- Long trades: 190,040; short trades: 158,891.
+- Signals dropped because of unavailable prices: 1.
+- Mean gross return: +0.09679 bps per trade.
+- Median gross return: 0.00000 bps per trade.
+- Gross win rate: 39.08%.
+- Daily mean gross return was positive on 30 of 30 days.
+- Lowest daily mean: +0.00371 bps.
+- Highest daily mean: +0.16197 bps.
+
+All 30 positive daily means are a descriptive observation, not proof of
+statistical significance or future persistence. Daily and trade returns
+may be dependent.
+
+### Long versus short
+
+| Side | Trades | Mean gross return | Gross win rate |
+| --- | ---: | ---: | ---: |
+| Long | 190,040 | 0.09097 bps | 38.995% |
+| Short | 158,891 | 0.10375 bps | 39.173% |
+
+### Uncertainty analysis
+
+A moving-block bootstrap was applied to the 30 daily mean returns.
+The unweighted mean of the 30 daily means was 0.095398 bps, distinct
+from the trade-weighted overall mean of 0.096789 bps. The descriptive
+95% bootstrap intervals for the unweighted mean of daily means were:
+
+| Daily block length | 95% interval for unweighted mean of daily means |
+| ---: | ---: |
+| 1 day | [0.082076, 0.108033] bps |
+| 3 days | [0.079751, 0.110677] bps |
+| 5 days | [0.081453, 0.109780] bps |
+
+All three intervals are above zero. This supports a positive average
+gross return within this sample, but does not establish persistence in
+future months. The resampling unit is the daily mean, not the individual
+trade. With only 30 days, these intervals remain sensitive to the sample
+and bootstrap assumptions; they are not proof of an executable edge.
+
+### Transaction costs
+
+The mean gross return implies a break-even round-trip cost of only
+0.09679 bps per trade under this simplified return model, before other
+omitted execution effects.
+
+The existing cost-sensitivity calculation gives the following mean
+returns after hypothetical round-trip costs:
+
+| Round-trip cost | Mean net return |
+| ---: | ---: |
+| 0 bps | +0.09679 bps |
+| 1 bp | -0.90321 bps |
+| 2 bps | -1.90321 bps |
+
+Binance's published Spot fee schedule, checked on 2026-10-17
+(https://www.binance.com/en/fee/trading), lists standard fees of
+0.10% per side and 0.075% per side when the displayed BNB discount
+applies. These correspond to 20 bps and 15 bps round trip respectively.
+At those rates, the modelled mean net returns would be -19.90321 bps
+and -14.90321 bps per trade.
+
+Even the published VIP 9 maker rate of 0.011% per side would correspond
+to 2.2 bps round trip if both executions qualified as maker fills.
+With the displayed BNB discount, that would be 1.65 bps round trip.
+Both exceed the observed gross edge. VIP eligibility, fee discounts,
+pair-specific promotions and actual account fees must not be assumed.
+
+The strategy therefore does not survive the assessed Spot fee scenarios.
+These calculations do not include spread, slippage, queue position,
+market impact or execution uncertainty.
+
+### Limitations and conclusion
+
+The backtest uses last-trade-price proxies, not executable bid/ask
+quotes, and does not model whether simulated fills would occur. The
+short side also requires an appropriate shorting product or venue and
+its own fee and execution assumptions.
+
+The frozen rule produced a small positive average gross return in this
+historical holdout, but the tested implementation is not economically
+viable under the assessed transaction costs. The result does not
+establish an executable trading edge. A possible future research
+direction is to test whether order-flow imbalance adds value to
+market-making or quote-skew decisions; that would require a separate,
+execution-aware model and independent evaluation.
+
+The fee-free compounded result is omitted as a performance claim
+because this backtest does not establish a realistic capital allocation
+or executable reinvestment model.

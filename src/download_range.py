@@ -6,10 +6,10 @@ import zipfile
 import requests
 
 
-# Download one week of historical Binance BTCUSDT spot data.
+# Download a date range of historical Binance BTCUSDT spot data.
 SYMBOL = "BTCUSDT"
-START_DATE = date(2025, 7, 1)
-END_DATE = date(2025, 7, 31)
+START_DATE = date(2026, 9, 1)
+END_DATE = date(2026, 9, 30)
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 RAW_DIR = PROJECT_DIR / "data" / "raw"

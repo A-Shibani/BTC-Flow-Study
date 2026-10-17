@@ -8,7 +8,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 TRADES_PATH = (
     PROJECT_DIR
     / "reports"
-    / "backtest_trades_2025-07-01_to_2025-07-31.csv"
+    / "backtest_trades_2026-09-01_to_2026-09-30.csv"
 )
 
 BOOTSTRAP_REPS = 20_000
@@ -52,7 +52,7 @@ def main():
     if not TRADES_PATH.exists():
         raise FileNotFoundError(
             f"Trade file not found: {TRADES_PATH}\n"
-            "Run the July backtest after updating its output filename."
+            "Run src/backtest.py for the configured period before evaluation."
         )
 
     trades = pd.read_csv(TRADES_PATH)
@@ -83,7 +83,7 @@ def main():
     ).mean()
 
     print("=" * 72)
-    print("FINAL EVALUATION — JULY 2025")
+    print("FINAL EVALUATION — SEPTEMBER 2026")
     print("=" * 72)
     print(f"Trades: {len(trades):,}")
     print(f"Days: {len(daily)}")

@@ -8,8 +8,8 @@ import pandas as pd
 # Frozen strategy configuration
 # --------------------------------------------------
 
-START_DATE = "2025-07-01"
-END_DATE = "2025-07-31"
+START_DATE = "2026-09-01"
+END_DATE = "2026-09-30"
 
 LONG_THRESHOLD = 0.75
 SHORT_THRESHOLD = -0.75

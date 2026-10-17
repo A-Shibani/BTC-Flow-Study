@@ -195,3 +195,20 @@ a cleaner final chronological evaluation.
 5\. Record all metrics, including negative results and limitations.
 
 6\. Do not change parameters and rerun against the same holdout.
+
+## 2026-10-17 — September Historical Holdout
+
+- Verified and downloaded all 30 September 2026 daily archives.
+- Built 2,592,000 one-second bars.
+- Ran the frozen OFI baseline without tuning its strategy parameters
+  to the September results.
+- Executed 348,931 trades; mean gross return +0.09679 bps; median
+  0.00000 bps; gross win rate 39.08%.
+- All 30 daily mean gross returns were positive; this is descriptive
+  evidence and does not by itself establish statistical significance.
+- Tested round-trip costs of 1 and 2 bps; mean net returns were
+  -0.90321 and -1.90321 bps per trade respectively.
+- Compared the observed gross edge with Binance's published Spot fee
+  schedule. The tested strategy does not survive the assessed fees.
+- Excluded hypothetical account-level dollar returns and fee-free
+  compounded returns from the research conclusion.
