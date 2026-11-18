@@ -245,7 +245,7 @@ However, returns are tail-concentrated. The top 1% of trades (3,490
 trades) contributed +20,189.39 when summing their per-trade gross
 returns expressed in basis points, equivalent to 59.78% of the total
 summed gross returns. The bottom 1% contributed -18,603.94 in the same
-units, equivalent to -55.09% of the total positive sum.
+units, equivalent to -55.09% of the total summed gross returns.
 
 These contribution statistics are sums of per-trade returns, not
 portfolio P&L or notionally weighted profits. They are descriptive and
@@ -407,15 +407,47 @@ historical holdout, not a live forward test.
 
 The main scripts include:
 
+- `run_research.ps1` — orchestrates the download, dataset construction, backtest, final evaluation and automated tests for a specified date range.
 - `src/download_range.py` — downloads daily Binance aggregate-trade archives for the configured dates.
 - `src/build_multiday_dataset.py` — builds one-second bars and forward-return targets for the configured dates.
-- `src/diagnose_signal.py`, `src/diagnose_targets.py`, `src/analyse_buckets.py` — exploratory diagnostics.
+- `src/backtest.py` — implements the frozen threshold rule and per-trade cost sensitivity analysis.
+- `src/final_evaluation.py` — summarises trade results and bootstraps daily mean returns.
+- `src/diagnose_signal.py`, `src/diagnose_targets.py`, `src/analyse_buckets.py` — exploratory signal and target diagnostics.
 - `src/audit_sampling.py` — checks the five-second decision sampling.
-- `src/backtest.py` — implements the fixed threshold rule and cost sensitivity.
-- `src/final_evaluation.py` — summarises the configured period's trade results and bootstraps daily means.
 - `src/predictive_controls.py` and `src/placebo_and_timing_checks.py` — regression controls, placebo checks and timing diagnostics.
-- `tests/test_backtest.py` — automated tests for sampling, timing, price availability and threshold logic.
+- `src/supplemental_trade_flow_analysis.py` — produces conditional-return and September trade-tail diagnostics and figures.
+- `tests/test_backtest.py` and `tests/test_research_data_functions.py` — automated tests for backtest mechanics, data transformations and target alignment.
 
-The checked-in date settings target 1–30 September 2026. Date constants and trade-file paths appear near the top of the scripts; change them consistently and use period-specific output filenames when reproducing another period. Raw archives and generated CSVs are intentionally kept out of Git; the report, experiment log, source code, tests and figures are version-controlled.
+### Reproducing the main pipeline
 
-The automated test suite passed **10 tests** during final project checks.
+The project uses Python and a local virtual environment. On Windows, create the environment and install the development dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+```
+
+Run the complete main pipeline for the September 2026 evaluation:
+
+```powershell
+.\run_research.ps1
+```
+
+The runner defaults to 1–30 September 2026. To evaluate another date range, pass the dates explicitly. For example:
+
+```powershell
+.\run_research.ps1 -StartDate "2025-06-01" -EndDate "2025-06-07"
+```
+
+The runner downloads the required daily archives, builds the one-second dataset and forward-return targets, runs the backtest and final evaluation, and executes the automated test suite. It requires an internet connection for archives that are not already available locally.
+
+The supplementary diagnostic script can be run separately when the relevant datasets have been generated:
+
+```powershell
+.\.venv\Scripts\python.exe src\supplemental_trade_flow_analysis.py
+```
+
+Raw archives, generated datasets and result CSV files are intentionally kept out of Git. The source code, tests, reports, figures and experiment documentation are version-controlled.
+
+The automated test suite passed **10 tests** during the final project checks.
