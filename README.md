@@ -124,9 +124,9 @@ btc-flow-study/
 ├── src/                     # Data, diagnostics and backtest scripts
 ├── tests/                   # Automated tests
 ├── reports/
-│   ├── final\_report.md
-│   ├── experiment\_log.md
-│   ├── frozen\_strategy.md
+│   ├── final_report.md
+│   ├── experiment_log.md
+│   ├── frozen_strategy.md
 │   └── figures/
 ├── requirements.txt
 ├── run_research.ps1
