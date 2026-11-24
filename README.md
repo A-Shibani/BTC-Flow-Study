@@ -7,7 +7,7 @@ observed gross edge survives transaction costs.
 ## Summary
 
 - **Question:** Does aggressive trade-volume imbalance predict short-horizon BTCUSDT returns?
-- **Data:** Binance BTCUSDT spot aggregate trades, aggregated into one-second bars.
+- **Data:** Binance BTCUSDT spot aggregate trades, aggregated into 7,862,400 one-second bars (1 Jun–31 Jul 2025 development and evaluation; 1–30 Sep 2026 holdout).
 - **Feature:** Normalized aggressor-signed trade-volume imbalance.
 - **Rule:** Thresholds of +0.75/-0.75; five-second decision grid, one-second entry delay, five-second holding period.
 - **Holdout:** September 2026, evaluated using the frozen baseline `v1.0-frozen-ofi`.
